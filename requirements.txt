@@ -4,3 +4,6 @@ python-multipart
 pillow
 numpy
 onnxruntime==1.*
+tokenizers
+pypdf
+huggingface_hub

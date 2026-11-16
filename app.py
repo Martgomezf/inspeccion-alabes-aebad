@@ -10,9 +10,13 @@ Qué hace (lógica propia, no solo copiar datos):
      que una falsa alarma, por eso el umbral para pedir reinspección es bajo.
   4. Indicadores para el LLM y el registro: prob. de defecto, confianza, costo esperado.
 
+Hito 2: el mismo servicio suma la serie temporal (rul.py) y el RAG con Transformer (rag.py).
+
 Endpoints:
-  GET  /health   -> estado del servicio y del modelo
-  POST /predict  -> recibe una imagen (multipart, campo "file") y devuelve JSON
+  GET  /health          -> estado del servicio y de los tres modelos
+  POST /predict         -> imagen del álabe (multipart, campo "file") -> clase, regla y costos (R4)
+  GET  /rul/{motor}     -> vida útil restante del motor 1..100, LSTM + Random Forest (R3)
+  GET  /rag?q=...&k=3   -> fragmentos del manual más parecidos a la consulta, con fuente y página (R5)
 """
 
 import io
@@ -22,7 +26,7 @@ import time
 
 import numpy as np
 import onnxruntime as ort
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 # ---------------------------------------------------------------------------
@@ -148,13 +152,22 @@ def decidir(probs: dict, calidad: dict) -> dict:
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
-app = FastAPI(title="Inspección de álabes AeBAD")
+import rul as modulo_rul          # noqa: E402  serie temporal (Hito 2)
+from rag import Indice           # noqa: E402  RAG con Transformer (Hito 2)
+
+try:
+    INDICE = Indice()
+except Exception as e:  # sin índice el resto del servicio sigue funcionando
+    INDICE, ERROR_RAG = None, str(e)
+
+app = FastAPI(title="Inspección de álabes AeBAD + RUL del motor + RAG")
 
 
 @app.get("/health")
 def health():
     return {"servicio": "ok", "modelo": ESTADO_MODELO, "clases": ETIQUETAS,
             "clase_sana": GOOD_LABEL, "img_size": IMG,
+            "rul": "ok", "rag": ("ok: %d fragmentos" % len(INDICE.frag)) if INDICE and INDICE.ok else "sin índice",
             "umbrales": {"reinspeccion": UMBRAL_REINSPECCION, "retiro": UMBRAL_RETIRO}}
 
 
@@ -183,3 +196,21 @@ async def predict(file: UploadFile = File(...)):
         **resultado,
         "tiempo_ms": round((time.time() - t0) * 1000),
     }
+
+
+@app.get("/rul/{motor}")
+def rul(motor: int, hasta_ciclo: int | None = None):
+    """Vida útil restante del motor (C-MAPSS FD001, motores de prueba 1 a 100)."""
+    try:
+        return modulo_rul.predecir_rul(motor, hasta_ciclo)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.get("/rag")
+def rag(q: str = Query(..., min_length=3), k: int = Query(3, ge=1, le=8)):
+    """Fragmentos del manual más relevantes para la consulta, con fuente y página para citar."""
+    if not (INDICE and INDICE.ok):
+        raise HTTPException(503, "Índice del RAG no disponible")
+    frag = INDICE.buscar(q, k)
+    return {"consulta": q, "fragmentos": frag, "encontrado": bool(frag)}
