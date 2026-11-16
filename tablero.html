@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tablero · Inspección de álabes y motores</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+ body{margin:0;font-family:Inter,Arial,sans-serif;background:#F2F4F7;color:#14213D}
+ header{background:#14213D;color:#fff;padding:20px 32px}
+ header h1{margin:0;font-size:22px} header p{margin:4px 0 0;color:#BFC8D6;font-size:13px}
+ main{padding:24px 32px;display:grid;gap:20px}
+ .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+ .k{background:#fff;border-radius:12px;padding:16px;border:1px solid #DCDFE4}
+ .k b{display:block;font-size:28px} .k span{font-size:12px;color:#4A5568}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px} @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+ .card{background:#fff;border-radius:12px;padding:18px;border:1px solid #DCDFE4}
+ .card h2{font-size:15px;margin:0 0 4px} .card p.s{font-size:12px;color:#4A5568;margin:0 0 12px}
+ table{width:100%;border-collapse:collapse;font-size:12.5px} th{text-align:left;background:#F2F4F7;padding:8px}
+ td{padding:7px 8px;border-top:1px solid #E5E7EB;vertical-align:top}
+ .tag{padding:2px 8px;border-radius:10px;font-size:11.5px;font-weight:600;white-space:nowrap}
+ .liberar,.normal{background:#DCF2E7;color:#1E6B4A} .reinspeccionar,.atencion{background:#FDEBD3;color:#9A4A0C}
+ .retirar,.critico{background:#F9DAD7;color:#9B1C14} .err{color:#9B1C14;font-size:13px}
+</style></head><body>
+<header><h1>Inspección de álabes y estado de motores</h1><p id="sub">Cargando…</p></header>
+<main>
+ <div class="kpis" id="kpis"></div>
+ <div class="grid2">
+  <div class="card"><h2>Inspecciones en el tiempo</h2><p class="s">Probabilidad de defecto del álabe (%) y RUL operativa del motor (ciclos) en cada inspección</p><canvas id="cTiempo" height="220"></canvas></div>
+  <div class="card"><h2>Flota: vida útil restante de los 100 motores</h2><p class="s">RUL operativa = mínimo entre LSTM y Random Forest. Crítico ≤ 30 ciclos, atención ≤ 60</p><canvas id="cFlota" height="220"></canvas></div>
+ </div>
+ <div class="grid2">
+  <div class="card"><h2>Modelo de imágenes (prueba, 324 fotos)</h2><p class="s">Se eligió EfficientNet-B0: deja pasar menos defectos como «good»</p><table id="tImg"></table></div>
+  <div class="card"><h2>Modelo de serie temporal (prueba, 100 motores)</h2><p class="s">Sobreestimar la vida restante es el error caro</p><table id="tRul"></table></div>
+ </div>
+ <div class="card"><h2>Registro de recomendaciones del LLM</h2><p class="s">Últimas inspecciones, con aprobación humana y citas del manual</p><div id="err" class="err"></div><table id="tLog"></table></div>
+</main>
+<script>
+const num = v => v === undefined || v === null || v === '' ? null : Number(String(v).replace(',', '.'));
+fetch('tablero/datos').then(r => r.json()).then(d => {
+  const R = d.registro || [];
+  document.getElementById('sub').textContent = 'Actualizado ' + d.generado + ' · ' + R.length + ' inspecciones registradas';
+  if (d.error_registro) document.getElementById('err').textContent = d.error_registro;
+  const cnt = k => R.filter(r => (r.decision || '') === k).length;
+  const crit = R.filter(r => String(r.requiere_aprobacion).toLowerCase() === 'true');
+  const aprob = crit.filter(r => /APROBADA/.test(r.aprobacion || '')).length;
+  const flotaCrit = d.flota.filter(f => f.estado === 'critico').length;
+  const k = [['Inspecciones', R.length], ['Liberadas', cnt('liberar')], ['A reinspección', cnt('reinspeccionar')], ['Retiradas', cnt('retirar')],
+             ['Acciones críticas aprobadas', aprob + ' / ' + crit.length], ['Motores críticos en la flota', flotaCrit + ' / 100']];
+  document.getElementById('kpis').innerHTML = k.map(x => '<div class="k"><b>' + x[1] + '</b><span>' + x[0] + '</span></div>').join('');
+
+  new Chart(document.getElementById('cTiempo'), { type: 'line', data: { labels: R.map(r => (r.fecha || '').slice(5, 16)), datasets: [
+    { label: 'P(defecto) %', data: R.map(r => num(r.p_defecto) !== null ? +(num(r.p_defecto) * 100).toFixed(1) : null), borderColor: '#C2581A', backgroundColor: '#C2581A', yAxisID: 'y', spanGaps: true },
+    { label: 'RUL motor (ciclos)', data: R.map(r => num(r.rul_operativa)), borderColor: '#14213D', backgroundColor: '#14213D', yAxisID: 'y1', spanGaps: true }] },
+    options: { scales: { y: { min: 0, max: 100, title: { display: true, text: '%' } }, y1: { position: 'right', min: 0, grid: { drawOnChartArea: false }, title: { display: true, text: 'ciclos' } } } } });
+
+  const col = { critico: '#B3261E', atencion: '#F2994A', normal: '#2E7D5B' };
+  const fl = [...d.flota].sort((a, b) => a.rul - b.rul);
+  new Chart(document.getElementById('cFlota'), { type: 'bar', data: { labels: fl.map(f => 'M' + f.motor), datasets: [{ label: 'RUL (ciclos)', data: fl.map(f => f.rul), backgroundColor: fl.map(f => col[f.estado]) }] },
+    options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { display: false }, title: { display: true, text: '100 motores, de menor a mayor RUL' } }, y: { title: { display: true, text: 'ciclos' } } } } });
+
+  document.getElementById('tImg').innerHTML = '<tr><th>Modelo</th><th>F1 macro</th><th>Defectos escapados (de 172)</th></tr>' +
+    d.metricas.imagenes.map(m => '<tr><td>' + m.modelo + '</td><td>' + m.f1_macro + ' %</td><td>' + (m.escapes ?? '—') + '</td></tr>').join('');
+  document.getElementById('tRul').innerHTML = '<tr><th>Modelo</th><th>RMSE (ciclos)</th><th>Sobreestima > 20 ciclos</th></tr>' +
+    Object.entries(d.metricas.rul).map(([n, m]) => '<tr><td>' + n + '</td><td>' + m.RMSE + '</td><td>' + m.sobreestima_mas_de_20 + '</td></tr>').join('');
+  const tag = v => v ? '<span class="tag ' + v + '">' + v.replace(/_/g, ' ') + '</span>' : '';
+  document.getElementById('tLog').innerHTML = '<tr><th>Fecha</th><th>Foto</th><th>Motor</th><th>Álabe</th><th>Motor: acción</th><th>Riesgo</th><th>Aprobación</th><th>Citas</th><th>Justificación</th></tr>' +
+    [...R].reverse().slice(0, 40).map(r => '<tr><td>' + (r.fecha || '') + '</td><td>' + (r.archivo || '') + '</td><td>' + (r.motor || '—') + ' ' + tag(r.estado_motor) + '</td><td>' + tag(r.decision) +
+      '</td><td>' + (r.accion_motor || '—').replace(/_/g, ' ') + '</td><td>' + (r.nivel_riesgo || '') + '</td><td>' + (r.aprobacion || '—') + '</td><td>' + (r.citas || '—') + '</td><td>' + (r.justificacion || '') + '</td></tr>').join('');
+});
+</script></body></html>

@@ -17,6 +17,7 @@ Endpoints:
   POST /predict         -> imagen del álabe (multipart, campo "file") -> clase, regla y costos (R4)
   GET  /rul/{motor}     -> vida útil restante del motor 1..100, LSTM + Random Forest (R3)
   GET  /rag?q=...&k=3   -> fragmentos del manual más parecidos a la consulta, con fuente y página (R5)
+  GET  /tablero         -> tablero web público con indicadores, flota y registro de recomendaciones (R9)
 """
 
 import io
@@ -27,6 +28,7 @@ import time
 import numpy as np
 import onnxruntime as ort
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse
 from PIL import Image, UnidentifiedImageError
 
 # ---------------------------------------------------------------------------
@@ -214,3 +216,16 @@ def rag(q: str = Query(..., min_length=3), k: int = Query(3, ge=1, le=8)):
         raise HTTPException(503, "Índice del RAG no disponible")
     frag = INDICE.buscar(q, k)
     return {"consulta": q, "fragmentos": frag, "encontrado": bool(frag)}
+
+
+import tablero  # noqa: E402  tablero web (Hito 2, R9)
+
+
+@app.get("/tablero", response_class=HTMLResponse)
+def ver_tablero():
+    return tablero.HTML
+
+
+@app.get("/tablero/datos")
+def datos_tablero():
+    return tablero.datos()

@@ -1,0 +1,80 @@
+{
+  "metricas_prueba": {
+    "Promedio (simple)": {
+      "RMSE": 40.58,
+      "MAE": 35.07,
+      "score_NASA": 18669.5,
+      "sobreestima_mas_de_20": 39
+    },
+    "Random Forest (clásico)": {
+      "RMSE": 12.41,
+      "MAE": 8.99,
+      "score_NASA": 242.7,
+      "sobreestima_mas_de_20": 6,
+      "val_RMSE": 12.26,
+      "seg_entrenamiento": 17.4
+    },
+    "LSTM (deep learning)": {
+      "RMSE": 13.45,
+      "MAE": 10.01,
+      "score_NASA": 335.6,
+      "sobreestima_mas_de_20": 10,
+      "val_RMSE": 11.8,
+      "epocas": 45,
+      "seg_entrenamiento": 80.6
+    },
+    "Mínimo RF/LSTM (operativo)": {
+      "RMSE": 11.72,
+      "MAE": 8.29,
+      "score_NASA": 201.1,
+      "sobreestima_mas_de_20": 4
+    }
+  },
+  "historial_val_RMSE_lstm": [
+    40.07,
+    20.17,
+    15.93,
+    14.04,
+    13.45,
+    14.1,
+    12.98,
+    14.58,
+    12.72,
+    12.5,
+    12.74,
+    13.18,
+    12.55,
+    12.7,
+    12.56,
+    13.51,
+    12.93,
+    13.44,
+    12.34,
+    12.5,
+    12.31,
+    12.67,
+    12.95,
+    12.46,
+    12.36,
+    12.75,
+    12.18,
+    12.15,
+    12.02,
+    12.88,
+    12.27,
+    12.55,
+    11.8,
+    12.15,
+    12.11,
+    13.06,
+    12.16,
+    13.41,
+    12.48,
+    12.41,
+    11.97,
+    12.13,
+    11.99,
+    11.84,
+    12.39
+  ]
+}
